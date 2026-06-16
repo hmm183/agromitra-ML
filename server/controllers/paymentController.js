@@ -2,6 +2,7 @@ const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const Log = require('../models/Log');
 const Order = require('../models/Order');
+const { sendOrderConfirmationEmail } = require('../services/emailService');
 
 let razorpay = null;
 if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
@@ -58,6 +59,7 @@ exports.createOrder = async (req, res) => {
 
 exports.verifyPayment = async (req, res) => {
   const { razorpay_order_id, razorpay_payment_id, razorpay_signature, mock, items, amount, shippingDetails } = req.body;
+  const frontendUrl = req.headers.origin || process.env.FRONTEND_URL;
 
   try {
     const finalItems = (items && items.length > 0) ? items : [
@@ -70,7 +72,7 @@ exports.verifyPayment = async (req, res) => {
     };
 
     if (mock || !razorpay) {
-      await new Order({
+      const orderDoc = await new Order({
         userId: req.user.id,
         razorpayOrderId: razorpay_order_id,
         razorpayPaymentId: 'mock_pay_' + crypto.randomBytes(4).toString('hex'),
@@ -85,6 +87,10 @@ exports.verifyPayment = async (req, res) => {
         userId: req.user.id,
         action: `Completed mock payment of order: ${razorpay_order_id}`
       }).save();
+
+      // Send order confirmation email asynchronously
+      sendOrderConfirmationEmail(req.user.email, orderDoc, true, frontendUrl).catch(err => console.error('Error sending order confirmation email:', err));
+
       return res.status(200).json({ status: 'success', message: 'Payment verified successfully (Mock)' });
     }
 
@@ -93,7 +99,7 @@ exports.verifyPayment = async (req, res) => {
     const generatedSignature = hmac.digest('hex');
 
     if (generatedSignature === razorpay_signature) {
-      await new Order({
+      const orderDoc = await new Order({
         userId: req.user.id,
         razorpayOrderId: razorpay_order_id,
         razorpayPaymentId: razorpay_payment_id,
@@ -108,12 +114,38 @@ exports.verifyPayment = async (req, res) => {
         userId: req.user.id,
         action: `Completed payment of order: ${razorpay_order_id} (Payment ID: ${razorpay_payment_id})`
       }).save();
+
+      // Send order confirmation email asynchronously
+      sendOrderConfirmationEmail(req.user.email, orderDoc, true, frontendUrl).catch(err => console.error('Error sending order confirmation email:', err));
+
       res.status(200).json({ status: 'success', message: 'Payment verified successfully' });
     } else {
+      // Send failed payment email
+      const failedOrder = {
+        razorpayOrderId: razorpay_order_id,
+        totalAmount: amount || 0,
+        items: finalItems,
+        shippingDetails: finalShippingDetails,
+        status: 'Cancelled',
+        createdAt: new Date()
+      };
+      sendOrderConfirmationEmail(req.user.email, failedOrder, false, frontendUrl).catch(err => console.error('Error sending payment failure email:', err));
+
       res.status(400).json({ status: 'failure', message: 'Invalid payment signature' });
     }
   } catch (error) {
     console.error('Error verifying Razorpay payment:', error);
+    if (razorpay_order_id) {
+      const failedOrder = {
+        razorpayOrderId: razorpay_order_id,
+        totalAmount: amount || 0,
+        items: items || [],
+        shippingDetails: shippingDetails || {},
+        status: 'Cancelled',
+        createdAt: new Date()
+      };
+      sendOrderConfirmationEmail(req.user.email, failedOrder, false, frontendUrl).catch(err => console.error('Error sending payment failure email:', err));
+    }
     res.status(500).json({ message: 'Error verifying payment' });
   }
 };

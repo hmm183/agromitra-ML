@@ -5,6 +5,7 @@ const SoilRequest = require('../models/SoilRequest');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Category = require('../models/Category');
+const { sendOrderDeliveredEmail } = require('../services/emailService');
 
 exports.getUsers = async (req, res) => {
   try {
@@ -157,6 +158,7 @@ exports.updateOrderStatus = async (req, res) => {
       return res.status(404).json({ message: 'Order not found.' });
     }
 
+    const prevStatus = order.status;
     order.status = status;
     await order.save();
 
@@ -164,6 +166,14 @@ exports.updateOrderStatus = async (req, res) => {
       userId: req.user.id,
       action: `Updated order status of ID: ${order._id} to ${status} (Customer: ${order.userId?.email || 'Unknown'})`
     }).save();
+
+    // If status changed to Delivered and customer has an email, send them a delivery notification email
+    if (status === 'Delivered' && prevStatus !== 'Delivered' && order.userId && order.userId.email) {
+      const frontendUrl = req.headers.origin || process.env.FRONTEND_URL;
+      sendOrderDeliveredEmail(order.userId.email, order, frontendUrl).catch(err => 
+        console.error('Error sending order delivered email:', err)
+      );
+    }
 
     res.status(200).json({ message: 'Order status updated successfully', order });
   } catch (error) {
