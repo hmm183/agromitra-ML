@@ -18,6 +18,7 @@ AgroMitra was built and designed by a dedicated two-person development team:
   * Designed the premium user experience, complete with glassmorphism, harmonious color palettes, custom charts, and a responsive theme context (light/dark mode).
   * Built interactive dashboards for both farmers and administrators.
   * Integrated multilingual localized translations (i18n).
+  * Shifted the Email system to Brevo for more robust clean email posting
 
 ---
 
