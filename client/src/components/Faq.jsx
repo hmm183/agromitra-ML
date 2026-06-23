@@ -64,7 +64,7 @@ function Faq() {
     }
   };
 
-  const handleAskGemini = async () => {
+  const handleAskGemini = async (inDepthMode = false) => {
     if (!searchQuery.trim()) return;
     setAskingAi(true);
     setAiResponse(null);
@@ -77,7 +77,7 @@ function Faq() {
           'Content-Type': 'application/json',
           'Authorization': token || ''
         },
-        body: JSON.stringify({ query: searchQuery })
+        body: JSON.stringify({ query: searchQuery, inDepth: inDepthMode })
       });
       const data = await res.json();
       if (res.ok) {
@@ -146,7 +146,7 @@ function Faq() {
                     <div className="mt-3 p-3 rounded-3 d-flex justify-content-between align-items-center border" style={{ background: 'var(--bg-input)', color: 'var(--text-body)' }}>
                       <span className="text-muted small me-2">Not satisfied with the result? Ask our AgroMitra AI Assistant directly!</span>
                       <button 
-                        onClick={handleAskGemini} 
+                        onClick={() => handleAskGemini(false)} 
                         className="btn btn-sm px-3 py-2 rounded-3 fw-bold d-flex align-items-center gap-2 btn-gradient-ai"
                         disabled={askingAi}
                         style={{ border: 'none', background: 'linear-gradient(135deg, #2e7d32 0%, #1565c0 100%)', color: '#fff', transition: 'all 0.3s ease' }}
@@ -164,6 +164,31 @@ function Faq() {
                       </button>
                     </div>
                   )}
+
+                  {/* Option to get an in-depth explanation from Gemini AI if match confidence is high */}
+                  {searchResult.score >= 0.25 && !aiResponse && (
+                    <div className="mt-3 p-3 rounded-3 d-flex justify-content-between align-items-center border" style={{ background: 'var(--bg-input)', color: 'var(--text-body)' }}>
+                      <span className="text-muted small me-2">Want to learn more? Let our AI Assistant explain this in detail!</span>
+                      <button 
+                        onClick={() => handleAskGemini(true)} 
+                        className="btn btn-sm px-3 py-2 rounded-3 fw-bold d-flex align-items-center gap-2 btn-gradient-ai"
+                        disabled={askingAi}
+                        style={{ border: 'none', background: 'linear-gradient(135deg, #2e7d32 0%, #1565c0 100%)', color: '#fff', transition: 'all 0.3s ease' }}
+                      >
+                        {askingAi ? (
+                          <>
+                            <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                            Expanding...
+                          </>
+                        ) : (
+                          <>
+                            <FaMagic /> Explain in Depth
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+
 
                   {/* Render direct Gemini response */}
                   {aiResponse && (

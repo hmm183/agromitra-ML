@@ -23,6 +23,9 @@ export default function Fertilizer() {
 
   const [prediction, setPrediction] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [aiUsageGuide, setAiUsageGuide] = useState(null);
+  const [askingUsage, setAskingUsage] = useState(false);
+  const [usageError, setUsageError] = useState(null);
 
   // Soil Reports Import State
   const [showImportModal, setShowImportModal] = useState(false);
@@ -93,6 +96,8 @@ export default function Fertilizer() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setAiUsageGuide(null);
+    setUsageError(null);
     try {
       const res = await fetch('/api/ml/predict/fertilizer', {
         method: 'POST',
@@ -112,6 +117,45 @@ export default function Fertilizer() {
       alert('Network error.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFetchDetailedUsage = async () => {
+    if (!prediction) return;
+    setAskingUsage(true);
+    setAiUsageGuide(null);
+    setUsageError(null);
+    const token = localStorage.getItem('token');
+    
+    const promptText = `Provide detailed application guidelines for the recommended fertilizer: "${prediction.recommendation}" for growing "${inputs.crop_type}" in "${inputs.soil_type}" soil.
+Soil chemistry parameters: Nitrogen (N): ${inputs.nitrogen}, Phosphorus (P): ${inputs.phosphorous}, Potassium (K): ${inputs.potassium}.
+Environmental parameters: Temperature: ${inputs.temperature}°C, Humidity: ${inputs.humidity}%, Soil Moisture: ${inputs.moisture}%.
+Please provide details on:
+1. Exact application dosage (quantity per acre/hectare).
+2. Ideal time & growth stage for application.
+3. Best methods (broadcasting, drilling, foliar, etc.).
+4. Precautions & environmental warnings.`;
+
+    try {
+      const res = await fetch('/api/queries/ask-gemini', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token || ''
+        },
+        body: JSON.stringify({ query: promptText, inDepth: true })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAiUsageGuide(data.answer);
+      } else {
+        setUsageError(data.message || "Failed to retrieve instructions.");
+      }
+    } catch (err) {
+      console.error(err);
+      setUsageError("Network error occurred.");
+    } finally {
+      setAskingUsage(false);
     }
   };
 
@@ -225,6 +269,44 @@ export default function Fertilizer() {
                     <h5 className="fw-bold mb-2 text-success">💡 Application Guidelines</h5>
                     <p className="mb-0 text-muted" style={{ lineHeight: '1.6', fontSize: '0.95rem' }}>{prediction.guidelines}</p>
                   </div>
+
+                  {!aiUsageGuide && (
+                    <button
+                      type="button"
+                      onClick={handleFetchDetailedUsage}
+                      className="btn btn-sm mt-3 px-3 py-2 rounded-3 fw-bold d-flex align-items-center gap-2 mx-auto"
+                      disabled={askingUsage}
+                      style={{ border: 'none', background: 'linear-gradient(135deg, #2e7d32 0%, #1565c0 100%)', color: '#fff', transition: 'all 0.3s ease' }}
+                    >
+                      {askingUsage ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                          Consulting AI...
+                        </>
+                      ) : (
+                        <>
+                          🤖 Explain Usage in Detail (AI)
+                        </>
+                      )}
+                    </button>
+                  )}
+
+                  {aiUsageGuide && (
+                    <div className="card p-3 mt-3 text-start shadow-sm border-0 text-body" style={{ background: 'rgba(21, 101, 192, 0.05)', borderLeft: '4px solid #1565c0', borderRadius: '10px' }}>
+                      <h6 className="fw-bold mb-2 text-primary d-flex align-items-center gap-2">
+                        🤖 AI Application Guidelines (Gemini)
+                      </h6>
+                      <p className="mb-0 text-muted small" style={{ lineHeight: '1.5', whiteSpace: 'pre-line' }}>
+                        {aiUsageGuide}
+                      </p>
+                    </div>
+                  )}
+
+                  {usageError && (
+                    <div className="alert alert-danger mt-3 mb-0 py-2 small text-start">
+                      ⚠️ {usageError}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-muted p-5">

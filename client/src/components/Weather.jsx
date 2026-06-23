@@ -21,6 +21,57 @@ export default function Weather() {
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [showWeekly, setShowWeekly] = useState(false);
 
+  // AI Weather advisory state
+  const [aiAdvisory, setAiAdvisory] = useState(null);
+  const [fetchingAiAdvisory, setFetchingAiAdvisory] = useState(false);
+  const [aiAdvisoryError, setAiAdvisoryError] = useState(null);
+
+  const handleFetchDetailedWeatherAdvice = async (isWeekly = false, dateLabel = '') => {
+    setFetchingAiAdvisory(true);
+    setAiAdvisory(null);
+    setAiAdvisoryError(null);
+    const token = localStorage.getItem('token');
+    
+    let promptText = '';
+    if (isWeekly && selectedDay) {
+      promptText = `For the weather forecast on ${dateLabel || selectedDay.date}:
+Predicted condition: ${selectedDay.predictedCondition}.
+Precipitation: ${selectedDay.precipitation} mm, Max Temp: ${selectedDay.temp_max}°C, Min Temp: ${selectedDay.temp_min}°C, Wind Speed: ${selectedDay.wind} km/h.
+The default advisory is: "${selectedDay.advice}".
+Provide a highly detailed, comprehensive, in-depth agricultural advisory and action plan for a farmer for this day. Include irrigation steps, crop protection instructions, and pesticide safety guidelines.`;
+    } else if (prediction) {
+      promptText = `For the predicted weather condition: "${prediction.prediction}".
+Precipitation: ${inputs.precipitation} mm, Max Temp: ${inputs.temp_max}°C, Min Temp: ${inputs.temp_min}°C, Wind Speed: ${inputs.wind} km/h.
+The default advisory is: "${prediction.advice}".
+Provide a highly detailed, comprehensive, in-depth agricultural advisory and action plan for a farmer for these weather conditions. Include irrigation adjustments, crop protection steps, and sowing or harvesting guides.`;
+    } else {
+      setFetchingAiAdvisory(false);
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/queries/ask-gemini', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token || ''
+        },
+        body: JSON.stringify({ query: promptText, inDepth: true })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAiAdvisory(data.answer);
+      } else {
+        setAiAdvisoryError(data.message || "Failed to retrieve detailed instructions.");
+      }
+    } catch (err) {
+      console.error(err);
+      setAiAdvisoryError("Network error occurred.");
+    } finally {
+      setFetchingAiAdvisory(false);
+    }
+  };
+
   const handleInputChange = (e) => {
     setInputs({ ...inputs, [e.target.name]: e.target.value });
   };
@@ -28,6 +79,8 @@ export default function Weather() {
   const handleAutoFill = () => {
     setLoading(true);
     setError('');
+    setAiAdvisory(null);
+    setAiAdvisoryError(null);
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
@@ -88,6 +141,8 @@ export default function Weather() {
   const handleWeeklyObservatory = () => {
     setLoading(true);
     setError('');
+    setAiAdvisory(null);
+    setAiAdvisoryError(null);
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
@@ -104,6 +159,8 @@ export default function Weather() {
   };
 
   const fetchWeeklyForecast = async (url) => {
+    setAiAdvisory(null);
+    setAiAdvisoryError(null);
     try {
       const res = await fetch(url, {
         headers: { 'Authorization': localStorage.getItem('token') || '' }
@@ -128,6 +185,8 @@ export default function Weather() {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setAiAdvisory(null);
+    setAiAdvisoryError(null);
     try {
       const res = await fetch('/api/ml/predict/weather', {
         method: 'POST',
@@ -338,7 +397,7 @@ export default function Weather() {
                       return (
                         <div 
                           key={day.date}
-                          onClick={() => setSelectedDayIndex(idx)}
+                          onClick={() => { setSelectedDayIndex(idx); setAiAdvisory(null); setAiAdvisoryError(null); }}
                           className="p-3 text-center d-flex flex-column align-items-center justify-content-between"
                           style={{
                             minWidth: '92px',
@@ -427,6 +486,43 @@ export default function Weather() {
                         <p className="mb-0 text-muted" style={{ lineHeight: '1.6', fontSize: '0.9rem' }}>
                           {selectedDay.advice}
                         </p>
+
+                        {!aiAdvisory && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const { dateLabel } = formatDayLabel(selectedDay.date);
+                              handleFetchDetailedWeatherAdvice(true, dateLabel);
+                            }}
+                            className="btn btn-sm mt-3 px-3 py-1.5 rounded-3 fw-bold d-flex align-items-center gap-2"
+                            disabled={fetchingAiAdvisory}
+                            style={{ border: 'none', background: 'linear-gradient(135deg, #2e7d32 0%, #1565c0 100%)', color: '#fff', transition: 'all 0.3s ease', fontSize: '0.8rem' }}
+                          >
+                            {fetchingAiAdvisory ? (
+                              <>
+                                <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                Consulting AI...
+                              </>
+                            ) : (
+                              '🤖 Explain Weather Advisory in Depth (AI)'
+                            )}
+                          </button>
+                        )}
+
+                        {aiAdvisory && (
+                          <div className="card p-3 mt-3 text-start shadow-sm border-0 text-body animate-fade-in" style={{ background: 'rgba(21, 101, 192, 0.05)', borderLeft: '4px solid #1565c0', borderRadius: '10px' }}>
+                            <h6 className="fw-bold text-primary mb-2">🤖 Detailed AI Action Plan (Gemini)</h6>
+                            <p className="mb-0 text-muted small" style={{ whiteSpace: 'pre-line', lineHeight: '1.5' }}>
+                              {aiAdvisory}
+                            </p>
+                          </div>
+                        )}
+
+                        {aiAdvisoryError && (
+                          <div className="alert alert-danger mt-3 mb-0 py-2 small text-start">
+                            ⚠️ {aiAdvisoryError}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -443,6 +539,40 @@ export default function Weather() {
                   <div className="card p-4 mt-4 text-start shadow-sm border-0" style={{ background: 'rgba(255,255,255,0.02)', borderLeft: '6px solid var(--text-color)', borderRadius: '10px' }}>
                     <h5 className="fw-bold mb-2 text-success">💡 Agricultural Smart Advisory</h5>
                     <p className="mb-0 text-muted" style={{ lineHeight: '1.6' }}>{prediction.advice}</p>
+
+                    {!aiAdvisory && (
+                      <button
+                        type="button"
+                        onClick={() => handleFetchDetailedWeatherAdvice(false)}
+                        className="btn btn-sm mt-3 px-3 py-1.5 rounded-3 fw-bold d-flex align-items-center gap-2"
+                        disabled={fetchingAiAdvisory}
+                        style={{ border: 'none', background: 'linear-gradient(135deg, #2e7d32 0%, #1565c0 100%)', color: '#fff', transition: 'all 0.3s ease', fontSize: '0.8rem' }}
+                      >
+                        {fetchingAiAdvisory ? (
+                          <>
+                            <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                            Consulting AI...
+                          </>
+                        ) : (
+                          '🤖 Explain Weather Advisory in Depth (AI)'
+                        )}
+                      </button>
+                    )}
+
+                    {aiAdvisory && (
+                      <div className="card p-3 mt-3 text-start shadow-sm border-0 text-body animate-fade-in" style={{ background: 'rgba(21, 101, 192, 0.05)', borderLeft: '4px solid #1565c0', borderRadius: '10px' }}>
+                        <h6 className="fw-bold text-primary mb-2">🤖 Detailed AI Action Plan (Gemini)</h6>
+                        <p className="mb-0 text-muted small" style={{ whiteSpace: 'pre-line', lineHeight: '1.5' }}>
+                          {aiAdvisory}
+                        </p>
+                      </div>
+                    )}
+
+                    {aiAdvisoryError && (
+                      <div className="alert alert-danger mt-3 mb-0 py-2 small text-start">
+                        ⚠️ {aiAdvisoryError}
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (

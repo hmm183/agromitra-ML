@@ -34,6 +34,89 @@ export default function Subsidies() {
   const [messages, setMessages] = useState([]);
   const [sendingMessage, setSendingMessage] = useState(false);
 
+  // AI details state for matched schemes
+  const [expandedSchemeName, setExpandedSchemeName] = useState(null);
+  const [schemeDetails, setSchemeDetails] = useState({});
+  const [fetchingSchemeDetails, setFetchingSchemeDetails] = useState({});
+  const [schemeDetailErrors, setSchemeDetailErrors] = useState({});
+
+  // Chatbot Gemini consulting state
+  const [askingGeminiChatbot, setAskingGeminiChatbot] = useState(false);
+
+  const handleFetchSchemeDetail = async (schemeName) => {
+    if (schemeDetails[schemeName]) {
+      // Toggle expansion if already fetched
+      setExpandedSchemeName(expandedSchemeName === schemeName ? null : schemeName);
+      return;
+    }
+
+    setExpandedSchemeName(schemeName);
+    setFetchingSchemeDetails(prev => ({ ...prev, [schemeName]: true }));
+    setSchemeDetailErrors(prev => ({ ...prev, [schemeName]: null }));
+
+    const token = localStorage.getItem('token');
+    const promptText = `Provide detailed information on how to apply for the government scheme/subsidy called: "${schemeName}".
+Include:
+1. Steps to apply (both online and offline if applicable).
+2. Document requirements (e.g. Aadhaar card, land papers, bank account, etc.).
+3. Eligibility criteria in detail.
+4. Contact information/portal links where farmers can apply.`;
+
+    try {
+      const res = await fetch('/api/queries/ask-gemini', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token || ''
+        },
+        body: JSON.stringify({ query: promptText, inDepth: true })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSchemeDetails(prev => ({ ...prev, [schemeName]: data.answer }));
+      } else {
+        setSchemeDetailErrors(prev => ({ ...prev, [schemeName]: data.message || "Failed to retrieve instructions from AI." }));
+      }
+    } catch (err) {
+      console.error(err);
+      setSchemeDetailErrors(prev => ({ ...prev, [schemeName]: "Network error occurred." }));
+    } finally {
+      setFetchingSchemeDetails(prev => ({ ...prev, [schemeName]: false }));
+    }
+  };
+
+  const handleConsultGeminiChatbot = async (originalQuery, msgIdx) => {
+    if (askingGeminiChatbot) return;
+    setAskingGeminiChatbot(true);
+
+    try {
+      const res = await fetch('/api/queries/ask-gemini', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': localStorage.getItem('token') || ''
+        },
+        body: JSON.stringify({ query: originalQuery, inDepth: false })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMessages(prev => [...prev, { 
+          sender: 'bot', 
+          text: data.answer, 
+          score: 1.0 
+        }]);
+        setMessages(prev => prev.map((m, idx) => idx === msgIdx ? { ...m, geminiConsulted: true } : m));
+      } else {
+        alert(data.message || "Failed to contact Gemini AI.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Network error contacting Gemini AI.");
+    } finally {
+      setAskingGeminiChatbot(false);
+    }
+  };
+
   useEffect(() => {
     setMessages(prev => {
       if (prev.length <= 1) {
@@ -100,12 +183,25 @@ export default function Subsidies() {
       });
       const data = await res.json();
       if (res.ok) {
-        setMessages(prev => [...prev, { sender: 'bot', text: data.answer }]);
+        setMessages(prev => [...prev, { 
+          sender: 'bot', 
+          text: data.answer,
+          score: data.score,
+          query: userQuery
+        }]);
       } else {
-        setMessages(prev => [...prev, { sender: 'bot', text: t('botError') || 'Sorry, I am facing trouble connecting to the advisory server. Please try again.' }]);
+        setMessages(prev => [...prev, { 
+          sender: 'bot', 
+          text: t('botError') || 'Sorry, I am facing trouble connecting to the advisory server. Please try again.',
+          query: userQuery
+        }]);
       }
     } catch (err) {
-      setMessages(prev => [...prev, { sender: 'bot', text: t('botNetworkError') || 'Network connection issue.' }]);
+      setMessages(prev => [...prev, { 
+        sender: 'bot', 
+        text: t('botNetworkError') || 'Network connection issue.',
+        query: userQuery
+      }]);
     } finally {
       setSendingMessage(false);
     }
@@ -244,6 +340,56 @@ export default function Subsidies() {
                             <span className="fs-4 fw-bold text-success">₹{(scheme.subsidy_amount || 0).toLocaleString()}</span>
                           </div>
                         </div>
+
+                        {/* Explain How to Apply (AI) Button */}
+                        <div className="mt-2 text-start">
+                          <button
+                            type="button"
+                            onClick={() => handleFetchSchemeDetail(scheme.scheme)}
+                            className="btn btn-sm px-3 py-1.5 rounded-3 fw-bold d-flex align-items-center gap-2"
+                            style={{ 
+                              border: 'none', 
+                              background: expandedSchemeName === scheme.scheme
+                                ? 'var(--bg-input)'
+                                : 'linear-gradient(135deg, #2e7d32 0%, #1565c0 100%)', 
+                              color: '#fff',
+                              fontSize: '0.8rem'
+                            }}
+                            disabled={fetchingSchemeDetails[scheme.scheme]}
+                          >
+                            {fetchingSchemeDetails[scheme.scheme] ? (
+                              <>
+                                <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                Consulting AI...
+                              </>
+                            ) : expandedSchemeName === scheme.scheme ? (
+                              'Hide Details'
+                            ) : (
+                              '🤖 Explain How to Apply (AI)'
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Collapsible Details Area */}
+                        {expandedSchemeName === scheme.scheme && (
+                          <div className="mt-3 p-3 rounded text-start animate-fade-in" style={{ background: 'rgba(21, 101, 192, 0.05)', borderLeft: '4px solid #1565c0', color: 'var(--text-body)' }}>
+                            <h6 className="fw-bold text-primary mb-2">🤖 AI Application Guidelines (Gemini)</h6>
+                            {schemeDetailErrors[scheme.scheme] ? (
+                              <div className="alert alert-danger mb-0 py-2 small">
+                                ⚠️ {schemeDetailErrors[scheme.scheme]}
+                              </div>
+                            ) : schemeDetails[scheme.scheme] ? (
+                              <p className="mb-0 text-muted small" style={{ whiteSpace: 'pre-line', lineHeight: '1.5' }}>
+                                {schemeDetails[scheme.scheme]}
+                              </p>
+                            ) : (
+                              <div className="d-flex align-items-center gap-2 text-muted small">
+                                <span className="spinner-border spinner-border-sm" role="status"></span>
+                                Fetching details...
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -286,6 +432,37 @@ export default function Subsidies() {
                       }}
                     >
                       {msg.text}
+
+                      {msg.sender === 'bot' && msg.query && (!msg.score || msg.score < 0.25) && !msg.geminiConsulted && (
+                        <div className="mt-3 pt-2 border-top text-start" style={{ borderColor: 'rgba(255,255,255,0.1)' }}>
+                          <p className="small text-muted mb-2" style={{ fontSize: '0.8rem' }}>
+                            Low confidence match. Let our Gemini AI assistant answer directly:
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => handleConsultGeminiChatbot(msg.query, idx)}
+                            className="btn btn-sm text-white fw-bold d-flex align-items-center gap-1"
+                            style={{ 
+                              background: 'linear-gradient(135deg, #2e7d32 0%, #1565c0 100%)', 
+                              border: 'none',
+                              borderRadius: '6px',
+                              fontSize: '0.78rem'
+                            }}
+                            disabled={askingGeminiChatbot}
+                          >
+                            {askingGeminiChatbot ? (
+                              <>
+                                <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                Consulting AI...
+                              </>
+                            ) : (
+                              <>
+                                <FaRobot /> Consult Gemini AI
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -149,9 +149,9 @@ User Question: "${message}"`;
   }
 };
 
-// AI Direct Query Assistant using Gemini-2.5-flash with Off-Topic Filtering
+// AI Direct Query Assistant using Gemini-2.5-flash with Off-Topic Filtering and In-Depth Mode
 exports.askGemini = async (req, res) => {
-  const { query } = req.body;
+  const { query, inDepth } = req.body;
   if (!query) {
     return res.status(400).json({ message: 'Query is required' });
   }
@@ -164,12 +164,17 @@ exports.askGemini = async (req, res) => {
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     
+    let promptDetail = "answer their question in a friendly, helpful, and concise manner in English. Keep it direct and relatively short.";
+    if (inDepth) {
+      promptDetail = "answer their question in a friendly, highly detailed, comprehensive, and in-depth manner in English. Provide detailed explanation, steps, and structure where relevant.";
+    }
+
     const prompt = `You are the AgroMitra AI Assistant, a helpful support chatbot for the AgroMitra agricultural platform.
 The user is asking: "${query}".
 
 If the question is completely off-topic (meaning it is NOT related to agriculture, farming, crops, soil, fertilizer, weather, Mandi prices, government agricultural schemes/subsidies, or the AgroMitra platform, its features, or developers Vrishank Raina and Raushan Shrivastawa), you MUST start your response with "OFFTOPIC:" followed by a polite explanation that you can only answer questions related to agriculture, farming, and the AgroMitra platform.
 
-Otherwise, answer their question in a friendly, helpful, and concise manner in English. Keep it direct and relatively short.`;
+Otherwise, ${promptDetail}`;
 
     const response = await axios.post(url, {
       contents: [
@@ -203,4 +208,6 @@ Otherwise, answer their question in a friendly, helpful, and concise manner in E
     });
   }
 };
+
+
 
