@@ -170,6 +170,11 @@ app.all('/api/ml/*', jwtAuth, async (req, res) => {
           return res.json({ question: queryText, answer: answer.replace(/```[a-z]*/g, '').trim(), score: 1.0 });
         } catch (geminiErr) {
           console.error("Gemini fallback failed:", geminiErr.message);
+          return res.json({
+            question: queryText,
+            answer: "I'm sorry, I'm having trouble connecting to my AI core right now. Please try again shortly.",
+            score: 0.0
+          });
         }
       }
       
@@ -199,6 +204,11 @@ app.all('/api/ml/*', jwtAuth, async (req, res) => {
           return res.json({ question: queryText, answer: answer.replace(/```[a-z]*/g, '').trim(), score: 1.0 });
         } catch (geminiErr) {
           console.error("Gemini fallback failed:", geminiErr.message);
+          return res.json({
+            question: queryText,
+            answer: "I'm sorry, I am currently facing trouble connecting to the advisory server. Please try again shortly.",
+            score: 0.0
+          });
         }
       }
       
@@ -338,6 +348,7 @@ app.all('/api/ml/*', jwtAuth, async (req, res) => {
             return res.json({ subsidies: eligible_subsidies });
           } catch (csvErr) {
             console.error("Error parsing subsidies CSV:", csvErr.message);
+            return res.json({ subsidies: [] });
           }
         }
       }

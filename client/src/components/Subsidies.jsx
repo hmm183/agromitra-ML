@@ -241,7 +241,7 @@ export default function Subsidies() {
                           </div>
                           <div className="text-end">
                             <small className="text-muted d-block">{t('benefitValue') || 'Benefit Value'}</small>
-                            <span className="fs-4 fw-bold text-success">₹{scheme.subsidy_amount.toLocaleString()}</span>
+                            <span className="fs-4 fw-bold text-success">₹{(scheme.subsidy_amount || 0).toLocaleString()}</span>
                           </div>
                         </div>
                       </div>
