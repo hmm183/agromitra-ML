@@ -11,6 +11,7 @@ const adminCheck = (req, res, next) => {
 };
 
 router.post('/', jwtAuth, queryCtrl.createQuery);
+router.post('/ask-gemini', jwtAuth, queryCtrl.askGemini);
 router.get('/', jwtAuth, adminCheck, queryCtrl.getQueries);
 router.post('/optimize', jwtAuth, adminCheck, queryCtrl.optimizeQuery);
 router.post('/:id/answer', jwtAuth, adminCheck, queryCtrl.answerQuery);

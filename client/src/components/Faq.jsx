@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Navbar from './Navbar';
 import Footer from './footer';
 import { useLanguage } from '../context/LanguageContext';
-import { FaSearch, FaQuestionCircle, FaAngleDown, FaAngleUp, FaPaperPlane } from 'react-icons/fa';
+import { FaSearch, FaQuestionCircle, FaAngleDown, FaAngleUp, FaPaperPlane, FaMagic } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
 
 function Faq() {
@@ -12,6 +12,9 @@ function Faq() {
   const [searchResult, setSearchResult] = useState(null);
   const [searching, setSearching] = useState(false);
   const [openFaqId, setOpenFaqId] = useState(null);
+  const [aiResponse, setAiResponse] = useState(null);
+  const [askingAi, setAskingAi] = useState(false);
+  const [aiError, setAiError] = useState(null);
 
   useEffect(() => {
     fetchFaqs();
@@ -35,6 +38,8 @@ function Faq() {
 
     setSearching(true);
     setSearchResult(null);
+    setAiResponse(null);
+    setAiError(null);
     const token = localStorage.getItem('token');
     try {
       const res = await fetch('/api/ml/query/website', {
@@ -58,6 +63,36 @@ function Faq() {
       setSearching(false);
     }
   };
+
+  const handleAskGemini = async () => {
+    if (!searchQuery.trim()) return;
+    setAskingAi(true);
+    setAiResponse(null);
+    setAiError(null);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch('/api/queries/ask-gemini', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token || ''
+        },
+        body: JSON.stringify({ query: searchQuery })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAiResponse(data);
+      } else {
+        setAiError(data.message || "Failed to retrieve response from AI.");
+      }
+    } catch (err) {
+      console.error(err);
+      setAiError("Network error occurred while contacting AI.");
+    } finally {
+      setAskingAi(false);
+    }
+  };
+
 
   const toggleFaq = (id) => {
     setOpenFaqId(openFaqId === id ? null : id);
@@ -105,6 +140,54 @@ function Faq() {
                       Match Confidence: {(searchResult.score * 100).toFixed(1)}%
                     </small>
                   )}
+                  
+                  {/* Option to ask Gemini AI directly if match confidence is low, undefined, or it's a generic response */}
+                  {(!searchResult.score || searchResult.score < 0.25) && !aiResponse && (
+                    <div className="mt-3 p-3 rounded-3 d-flex justify-content-between align-items-center border" style={{ background: 'var(--bg-input)', color: 'var(--text-body)' }}>
+                      <span className="text-muted small me-2">Not satisfied with the result? Ask our AgroMitra AI Assistant directly!</span>
+                      <button 
+                        onClick={handleAskGemini} 
+                        className="btn btn-sm px-3 py-2 rounded-3 fw-bold d-flex align-items-center gap-2 btn-gradient-ai"
+                        disabled={askingAi}
+                        style={{ border: 'none', background: 'linear-gradient(135deg, #2e7d32 0%, #1565c0 100%)', color: '#fff', transition: 'all 0.3s ease' }}
+                      >
+                        {askingAi ? (
+                          <>
+                            <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                            Consulting AI...
+                          </>
+                        ) : (
+                          <>
+                            <FaMagic /> Ask AI Assistant
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Render direct Gemini response */}
+                  {aiResponse && (
+                    <div className="mt-3 p-3 rounded-3 border-start border-4 border-primary animate-fade-in" style={{ background: 'rgba(21, 101, 192, 0.05)', color: 'var(--text-body)' }}>
+                      <div className="d-flex align-items-center gap-2 mb-2">
+                        <FaMagic className="text-primary" />
+                        <h6 className="fw-bold text-primary mb-0">AgroMitra AI (Gemini) Response</h6>
+                      </div>
+                      {aiResponse.isOffTopic ? (
+                        <div className="alert alert-warning border-0 rounded-3 mb-0 py-2 small fw-semibold">
+                          ⚠️ {aiResponse.answer}
+                        </div>
+                      ) : (
+                        <p className="mb-0 text-muted small" style={{ whiteSpace: 'pre-line' }}>{aiResponse.answer}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {aiError && (
+                    <div className="alert alert-danger mt-3 mb-0 py-2 small">
+                      {aiError}
+                    </div>
+                  )}
+
                   {searchResult.score !== undefined && searchResult.score <= 0.15 && (
                     <div className="mt-3 p-3 bg-light rounded-3 d-flex justify-content-between align-items-center border">
                       <span className="text-muted small">Not what you were looking for? Submit a query directly to our support team.</span>

@@ -125,9 +125,11 @@ app.all('/api/ml/*', jwtAuth, async (req, res) => {
   } catch (error) {
     console.error('Error proxying to ML service:', error.message);
     
-    // Fallback to Gemini/Rules if Flask service is offline
-    if (error.code === 'ECONNREFUSED' || error.message.includes('connect ECONNREFUSED')) {
-      console.log('Flask ML service is offline. Executing Node.js fallback...');
+    // Fallback to Gemini/Rules if Flask service is offline or returns error/not-found status
+    const isOffline = error.code === 'ECONNREFUSED' || error.message.includes('connect ECONNREFUSED');
+    const isErrorStatus = error.response && (error.response.status === 404 || error.response.status >= 500);
+    if (isOffline || isErrorStatus) {
+      console.log('Flask ML service is offline or returned error status. Executing Node.js fallback...');
       const apiKey = process.env.GEMINI_API_KEY;
       
       // 1. Fallback for AI Assistant / Website QA

@@ -148,3 +148,59 @@ User Question: "${message}"`;
     });
   }
 };
+
+// AI Direct Query Assistant using Gemini-2.5-flash with Off-Topic Filtering
+exports.askGemini = async (req, res) => {
+  const { query } = req.body;
+  if (!query) {
+    return res.status(400).json({ message: 'Query is required' });
+  }
+
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ message: 'Gemini API key is not configured' });
+    }
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    
+    const prompt = `You are the AgroMitra AI Assistant, a helpful support chatbot for the AgroMitra agricultural platform.
+The user is asking: "${query}".
+
+If the question is completely off-topic (meaning it is NOT related to agriculture, farming, crops, soil, fertilizer, weather, Mandi prices, government agricultural schemes/subsidies, or the AgroMitra platform, its features, or developers Vrishank Raina and Raushan Shrivastawa), you MUST start your response with "OFFTOPIC:" followed by a polite explanation that you can only answer questions related to agriculture, farming, and the AgroMitra platform.
+
+Otherwise, answer their question in a friendly, helpful, and concise manner in English. Keep it direct and relatively short.`;
+
+    const response = await axios.post(url, {
+      contents: [
+        {
+          parts: [
+            { text: prompt }
+          ]
+        }
+      ]
+    });
+
+    let answer = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!answer) {
+      throw new Error('Empty response from Gemini API');
+    }
+
+    answer = answer.replace(/```[a-z]*/g, '').trim();
+
+    let isOffTopic = false;
+    if (answer.toUpperCase().startsWith('OFFTOPIC:')) {
+      isOffTopic = true;
+      answer = answer.substring('OFFTOPIC:'.length).trim();
+    }
+
+    res.status(200).json({ answer, isOffTopic });
+  } catch (error) {
+    console.error('Error asking Gemini:', error.message);
+    res.status(500).json({ 
+      message: 'Failed to get answer from AI', 
+      details: error.message 
+    });
+  }
+};
+

@@ -1,16 +1,51 @@
 // Service for sending emails (OTP and Google password)
 require('dotenv').config();
-const nodemailer = require('nodemailer');
+const transporter = {
+  sendMail: async (mailOptions) => {
+    const apiKey = process.env.BREVO_API_KEY;
+    if (!apiKey) {
+      throw new Error('BREVO_API_KEY is not defined in environment variables');
+    }
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
-  port: parseInt(process.env.SMTP_PORT || '587', 10),
-  secure: false, // 587 uses STARTTLS
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS
+    const senderEmail = mailOptions.from || process.env.SMTP_SENDER || 'raushansadaua2004@gmail.com';
+    const recipientEmail = mailOptions.to;
+
+    const payload = {
+      sender: { email: senderEmail },
+      to: [{ email: recipientEmail }],
+      subject: mailOptions.subject,
+    };
+
+    if (mailOptions.html) {
+      payload.htmlContent = mailOptions.html;
+    }
+    if (mailOptions.text) {
+      payload.textContent = mailOptions.text;
+    }
+
+    console.log(`[EmailService] Sending email to ${recipientEmail} via Brevo REST API...`);
+
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': apiKey,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Brevo REST API responded with status ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('[EmailService] Email sent successfully via Brevo REST API:', data);
+    return data;
   }
-});
+};
+
 
 async function sendOTPEmail(toEmail, otp) {
   const mailOptions = {
@@ -93,10 +128,10 @@ async function sendOrderConfirmationEmail(toEmail, order, success = true, fronte
                     ${success ? 'Order Confirmation' : 'Order Unsuccessful'}
                   </h2>
                   <p style="margin: 0 0 20px 0; font-size: 15px; color: #555555; line-height: 1.6;">
-                    ${success 
-                      ? `We have received your payment and your order is currently being processed. Here are your order invoice details. You can track your package directly inside your AgroMitra account.` 
-                      : `We're sorry, but the payment transaction verification for your order was unsuccessful. No order has been placed. If money was deducted, it will be refunded shortly. You can try checkout again.`
-                    }
+                    ${success
+      ? `We have received your payment and your order is currently being processed. Here are your order invoice details. You can track your package directly inside your AgroMitra account.`
+      : `We're sorry, but the payment transaction verification for your order was unsuccessful. No order has been placed. If money was deducted, it will be refunded shortly. You can try checkout again.`
+    }
                   </p>
 
                   <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 30px; background-color: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; padding: 15px;">
@@ -288,8 +323,8 @@ async function sendOrderDeliveredEmail(toEmail, order, frontendUrl = null) {
   await transporter.sendMail(mailOptions);
 }
 
-module.exports = { 
-  sendOTPEmail, 
+module.exports = {
+  sendOTPEmail,
   sendPasswordEmail,
   sendOrderConfirmationEmail,
   sendOrderDeliveredEmail
